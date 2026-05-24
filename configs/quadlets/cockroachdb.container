@@ -1,0 +1,22 @@
+[Unit]
+Description=CockroachDB single-node
+Documentation=https://www.cockroachlabs.com/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/v-sekai/cockroach:e7195c11905a24a30768c6a9cab39eb571a30d25
+ContainerName=cockroachdb
+PublishPort=26257:26257
+PublishPort=127.0.0.1:8080:8080
+Volume=/var/lib/cockroach:/cockroach/cockroach-data:Z
+Volume=/etc/cockroach/certs:/cockroach/certs:ro,Z
+Exec=start-single-node --certs-dir=/cockroach/certs --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --advertise-addr=cockroachdb:26257 --cache=2GB --max-sql-memory=2GB
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target
