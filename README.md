@@ -1,46 +1,37 @@
-# cockroach-crdb-image
+# cockroach-crdb-quadlet
 
-V-Sekai CRDB VM image: single-node CockroachDB with mTLS, run as a
-podman quadlet on top of `linux-base-image`. Built once per release via
-packer; consumed by the `infra` repo as the qcow2 for
-`harvester_virtualmachine.crdb`.
+Podman [quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
+source for a single-node CockroachDB (mTLS) service, run by systemd on
+an AlmaLinux host (e.g. one provisioned from `linux-base-image`).
 
-## What's in the image
+This repo is the source of truth for the unit; it is installed onto a
+host rather than baked into a VM image.
 
-Inherits everything from `linux-base-image` (AlmaLinux 9 + podman +
-chrony + qemu-guest-agent), and adds:
+## Layout
 
-- `/etc/containers/systemd/cockroachdb.container` — podman quadlet
-  running `ghcr.io/v-sekai/cockroach` in `start-single-node` mode
-- `/var/lib/cockroach` — data dir (`harvester_volume` bind-mounted
-  here by infra-side cloud-init)
-- `/etc/cockroach/certs` — mountpoint for the mTLS PKI; certs come
-  via a per-VM Kubernetes Secret + KubeVirt cloud-init data source
+- `quadlets/cockroachdb.container` — the quadlet. systemd's podman
+  generator turns it into `cockroachdb.service` at boot. Image tag is
+  pinned here; bumping it is a deliberate edit to this repo.
+- `install.sh` — installs the unit to `/etc/containers/systemd/`,
+  creates `/var/lib/cockroach` (data) and `/etc/cockroach/certs`
+  (mTLS PKI mountpoint), pre-pulls the pinned image, reloads systemd.
 
-The cockroach binary is NOT installed natively. The CRDB image
-(`ghcr.io/v-sekai/cockroach:<sha>`) is pre-pulled into podman's local
-store so first boot is fast. Image tag is pinned in
-`configs/quadlets/cockroachdb.container` and bumped by editing this
-repo + re-baking.
-
-## Build
-
-CI on push to main + weekly schedule. Local:
+## Install
 
 ```sh
-cd packer
-bash scripts/prepare-cidata.sh
-packer init build.pkr.hcl
-packer build build.pkr.hcl
-ls ../output/
+sudo ./install.sh            # installs unit + pre-pulls the image
+sudo systemctl start cockroachdb.service
 ```
 
-## Inheritance
+`PULL=0 sudo -E ./install.sh` skips the pre-pull (the service pulls on
+first start instead).
 
-Pin the parent version explicitly in `build.pkr.hcl`:
+## Configuration (per-deployment, NOT in this repo)
 
-```hcl
-variable "source_image_url" {
-  default = "https://github.com/v-sekai-multiplayer-fabric/linux-base-image/releases/download/v0.1.0/linux-base-image.qcow2"
-}
-```
+- `/var/lib/cockroach` — bind-mount durable storage here.
+- `/etc/cockroach/certs` — the mTLS PKI, delivered per deployment.
+
+## CI
+
+`.github/workflows/lint.yml` runs the units through podman's systemd
+generator in dry-run mode on every push/PR, so a malformed unit fails CI.
